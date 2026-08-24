@@ -1,0 +1,174 @@
+// Prisma schema for Event Planner Business Software
+// Default datasource is SQLite for zero-config local development.
+// Swap provider/url to "postgresql" + a DATABASE_URL for production (Postgres
+// supports native enums too — see the commented enum blocks below).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// SQLite has no native enum type, so enum-like fields below are plain Strings.
+// The allowed values are enforced at the API layer (see src/routes/*.ts zod schemas):
+//   Role:                ADMIN | PLANNER | STAFF
+//   EventStatus:         LEAD | PLANNING | CONFIRMED | IN_PROGRESS | COMPLETED | CANCELLED
+//   TaskStatus:          TODO | IN_PROGRESS | DONE
+//   TaskPriority:        LOW | MEDIUM | HIGH
+//   RsvpStatus:          PENDING | CONFIRMED | DECLINED
+//   InvoiceStatus:       DRAFT | SENT | PARTIALLY_PAID | PAID | OVERDUE
+//   VendorBookingStatus: INQUIRY | BOOKED | CONFIRMED | CANCELLED
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("PLANNER")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  clients Client[]
+  events  Event[]
+  vendors Vendor[]
+}
+
+model Client {
+  id        String   @id @default(uuid())
+  name      String
+  email     String?
+  phone     String?
+  company   String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId String
+
+  events   Event[]
+  invoices Invoice[]
+}
+
+model Event {
+  id          String   @id @default(uuid())
+  title       String
+  type        String?
+  status      String   @default("LEAD")
+  startDate   DateTime
+  endDate     DateTime?
+  location    String?
+  budget      Float    @default(0)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId String
+
+  client   Client? @relation(fields: [clientId], references: [id])
+  clientId String?
+
+  tasks        Task[]
+  budgetItems  BudgetItem[]
+  guests       Guest[]
+  invoices     Invoice[]
+  eventVendors EventVendor[]
+}
+
+model Vendor {
+  id          String   @id @default(uuid())
+  name        String
+  category    String
+  contactName String?
+  email       String?
+  phone       String?
+  priceRange  String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId String
+
+  eventVendors EventVendor[]
+}
+
+model EventVendor {
+  id        String   @id @default(uuid())
+  status    String   @default("INQUIRY")
+  cost      Float    @default(0)
+  notes     String?
+  createdAt DateTime @default(now())
+
+  event    Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId  String
+  vendor   Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  vendorId String
+
+  @@unique([eventId, vendorId])
+}
+
+model Task {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  dueDate     DateTime?
+  status      String    @default("TODO")
+  priority    String    @default("MEDIUM")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId String
+}
+
+model BudgetItem {
+  id            String   @id @default(uuid())
+  category      String
+  description   String?
+  estimatedCost Float    @default(0)
+  actualCost    Float    @default(0)
+  paid          Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId String
+}
+
+model Guest {
+  id         String   @id @default(uuid())
+  name       String
+  email      String?
+  phone      String?
+  rsvpStatus String   @default("PENDING")
+  plusOne    Boolean  @default(false)
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId String
+}
+
+model Invoice {
+  id          String    @id @default(uuid())
+  number      String    @unique
+  amount      Float
+  amountPaid  Float     @default(0)
+  status      String    @default("DRAFT")
+  dueDate     DateTime?
+  issuedDate  DateTime  @default(now())
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  event    Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId  String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId String
+}
